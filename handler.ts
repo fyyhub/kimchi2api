@@ -30,24 +30,30 @@ function errorResponse(status: number, message: string, type = "kimchi_gateway_e
 	return json(status, { error: { message, type, code: status } })
 }
 
-/** Constant-length bearer check against the configured proxy token. */
-function isAuthorized(req: Request, token?: string): boolean {
-	if (!token) return true
+/** Extract the bearer token from the Authorization header, if present. */
+function extractBearer(req: Request): string | undefined {
 	const header = req.headers.get("authorization")
-	if (!header) return false
-	const expected = `Bearer ${token}`
-	return header.length === expected.length && header === expected
+	if (!header) return undefined
+	const match = /^Bearer\s+(.+)$/i.exec(header.trim())
+	return match ? match[1].trim() : undefined
 }
 
 /**
  * Handle a single request. `fetchImpl` is injectable for tests; production
  * callers omit it and the global fetch is used.
+ *
+ * Auth model (bring-your-own-key): the client sends its Kimchi API key as the
+ * `Authorization: Bearer <key>` header, and the proxy forwards it upstream as
+ * KIMCHI_API_KEY. A server-side `env.KIMCHI_API_KEY` acts as a fallback when no
+ * bearer token is provided.
  */
 export async function handleRequest(req: Request, env: Env, fetchImpl?: typeof globalThis.fetch): Promise<Response> {
 	const url = new URL(req.url)
 	const { pathname } = url
 	const method = req.method.toUpperCase()
-	const options = { env, fetchImpl }
+	// The caller's bearer token is the upstream Kimchi key (BYOK).
+	const apiKey = extractBearer(req)
+	const options = { env, apiKey, fetchImpl }
 
 	if (method === "GET" && pathname === "/healthz") {
 		return json(200, { status: "ok" })
@@ -59,11 +65,6 @@ export async function handleRequest(req: Request, env: Env, fetchImpl?: typeof g
 			gateway: resolveEndpoint(env),
 			routes: ["GET /v1/models", "POST /v1/chat/completions", "GET /healthz"],
 		})
-	}
-
-	const token = env.KIMCHI_OPENAI_SERVICE_TOKEN
-	if (!isAuthorized(req, token)) {
-		return errorResponse(401, "Missing or invalid Authorization bearer token", "invalid_request_error")
 	}
 
 	try {

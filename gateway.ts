@@ -18,12 +18,14 @@ export const KIMCHI_API = "https://llm.kimchi.dev"
 
 /** Environment surface both platforms expose (process.env / Deno.env snapshot). */
 export interface Env {
-	/** Upstream Kimchi credential. Required. */
+	/**
+	 * Optional server-side Kimchi credential, used as a fallback when the client
+	 * does not send a Bearer token. In the bring-your-own-key model this is
+	 * usually left unset and each client supplies its own key.
+	 */
 	KIMCHI_API_KEY?: string
 	/** Override the gateway base URL. Optional. */
 	KIMCHI_LLM_ENDPOINT?: string
-	/** Optional bearer token clients must present to use this proxy. */
-	KIMCHI_OPENAI_SERVICE_TOKEN?: string
 }
 
 /** Strip trailing slashes and fall back to the default endpoint when empty. */
@@ -44,12 +46,23 @@ export function modelsMetadataUrl(endpoint?: string): string {
 
 export interface GatewayOptions {
 	env: Env
+	/**
+	 * API key supplied by the caller — typically the client's bearer token from
+	 * the incoming `Authorization` header (bring-your-own-key). Takes precedence
+	 * over `env.KIMCHI_API_KEY`.
+	 */
+	apiKey?: string
 	/** Injected fetch for tests. Defaults to the global fetch. */
 	fetchImpl?: typeof globalThis.fetch
 }
 
-/** Resolve the Kimchi API key from the environment. */
-export function resolveApiKey(env: Env): string | undefined {
+/**
+ * Resolve the Kimchi API key. Priority: the caller-supplied key (the client's
+ * bearer token) → `env.KIMCHI_API_KEY` as a server-side fallback. Returns
+ * undefined when neither is present so the handler can answer 401.
+ */
+export function resolveApiKey(env: Env, override?: string): string | undefined {
+	if (typeof override === "string" && override.length > 0) return override
 	const key = env.KIMCHI_API_KEY
 	return typeof key === "string" && key.length > 0 ? key : undefined
 }
@@ -99,8 +112,9 @@ const USER_AGENT = "kimchi-openai-service-edge"
  * Throws GatewayAuthError / GatewayError so the handler can pick a status.
  */
 export async function listModels(options: GatewayOptions): Promise<OpenAIModel[]> {
-	const apiKey = resolveApiKey(options.env)
-	if (!apiKey) throw new GatewayAuthError("No Kimchi API key configured (set KIMCHI_API_KEY)")
+	const apiKey = resolveApiKey(options.env, options.apiKey)
+	if (!apiKey)
+		throw new GatewayAuthError("No Kimchi API key provided (send it as a Bearer token or set KIMCHI_API_KEY)")
 
 	const fetchImpl = options.fetchImpl ?? globalThis.fetch
 	const response = await fetchImpl(modelsMetadataUrl(options.env.KIMCHI_LLM_ENDPOINT), {
@@ -136,8 +150,9 @@ export async function chatCompletions(
 	payload: BodyInit,
 	options: GatewayOptions & { signal?: AbortSignal },
 ): Promise<Response> {
-	const apiKey = resolveApiKey(options.env)
-	if (!apiKey) throw new GatewayAuthError("No Kimchi API key configured (set KIMCHI_API_KEY)")
+	const apiKey = resolveApiKey(options.env, options.apiKey)
+	if (!apiKey)
+		throw new GatewayAuthError("No Kimchi API key provided (send it as a Bearer token or set KIMCHI_API_KEY)")
 
 	const fetchImpl = options.fetchImpl ?? globalThis.fetch
 	return fetchImpl(`${openaiBaseUrl(options.env.KIMCHI_LLM_ENDPOINT)}/chat/completions`, {

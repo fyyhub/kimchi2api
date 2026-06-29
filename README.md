@@ -26,21 +26,24 @@ proxy injects the Kimchi credential, and forwards to the Kimchi gateway.
 
 ## Environment variables
 
-| Variable                       | Required | Description                                                        |
-| ------------------------------ | -------- | ------------------------------------------------------------------ |
-| `KIMCHI_API_KEY`               | yes      | Upstream Kimchi credential (from `kimchi login`).                  |
-| `KIMCHI_LLM_ENDPOINT`          | no       | Override the gateway base URL (default `https://llm.kimchi.dev`).  |
-| `KIMCHI_OPENAI_SERVICE_TOKEN`  | no       | If set, clients must send `Authorization: Bearer <token>`.         |
+| Variable                       | Required | Description                                                                 |
+| ------------------------------ | -------- | --------------------------------------------------------------------------- |
+| `KIMCHI_API_KEY`               | no       | Optional server-side fallback key, used only when a client sends no token.  |
+| `KIMCHI_LLM_ENDPOINT`          | no       | Override the gateway base URL (default `https://llm.kimchi.dev`).           |
 
-> Unlike the CLI version, credentials come **only** from the environment —
-> there is no `~/.config/kimchi/config.json` on a serverless host.
+> **Bring-your-own-key:** each client sends its own Kimchi API key as the
+> `Authorization: Bearer <key>` header, and the proxy forwards it upstream.
+> The proxy is stateless and stores no credentials. `KIMCHI_API_KEY` is only a
+> fallback for clients that omit the header — leave it unset for a pure BYOK
+> deployment.
 
 ## Deploy to Vercel
 
 ```bash
 cd deploy
-vercel env add KIMCHI_API_KEY          # paste your key (mark it as a Secret)
-vercel env add KIMCHI_OPENAI_SERVICE_TOKEN   # optional: protect the proxy
+# For a pure bring-your-own-key deployment, no env vars are required.
+# (Optional) set a server-side fallback key for clients that omit the header:
+vercel env add KIMCHI_API_KEY          # optional fallback (mark it as a Secret)
 vercel deploy --prod
 ```
 
@@ -52,7 +55,7 @@ Then point any OpenAI client at `https://<your-app>.vercel.app/v1`.
 cd deploy
 # one-off via deployctl:
 deployctl deploy --project=<your-project> --prod main.ts
-# set env vars in the Deno Deploy dashboard: KIMCHI_API_KEY (+ optional token)
+# (optional) set KIMCHI_API_KEY in the Deno Deploy dashboard as a fallback key
 ```
 
 Or connect the repo in the Deno Deploy dashboard with entrypoint `deploy/main.ts`.
@@ -61,26 +64,28 @@ Local dev: `deno task start` (listens on `http://localhost:8000`).
 
 ## Usage
 
-```bash
-# without a proxy token
-curl https://<host>/v1/models
+Each client sends its own Kimchi API key as the bearer token:
 
-# with a proxy token configured
+```bash
+curl https://<host>/v1/models \
+  -H "Authorization: Bearer $KIMCHI_API_KEY"
+
 curl https://<host>/v1/chat/completions \
-  -H "Authorization: Bearer $KIMCHI_OPENAI_SERVICE_TOKEN" \
+  -H "Authorization: Bearer $KIMCHI_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"model":"glm-5.2-fp8","messages":[{"role":"user","content":"hi"}]}'
 ```
 
 Any OpenAI SDK works by setting `base_url` to `https://<host>/v1` and `api_key`
-to your proxy token (or any non-empty string when no token is configured).
+to your Kimchi API key — the proxy forwards it upstream unchanged.
 
 ## Security notes
 
-- The proxy holds your `KIMCHI_API_KEY` server-side and never returns it.
-- Without `KIMCHI_OPENAI_SERVICE_TOKEN`, the deployed URL is **open to anyone
-  who finds it** and will spend your Kimchi credits. Set the token for any
-  public deployment.
-- A `402` from `/v1/chat/completions` means the Kimchi account is out of
-  credits — the proxy forwards the upstream status unchanged.
+- The proxy is **stateless**: it forwards whatever key the client sends and
+  stores nothing. Each user brings their own Kimchi credential.
+- An optional server-side `KIMCHI_API_KEY` acts only as a fallback for clients
+  that send no bearer token. For a public BYOK deployment, leave it unset so the
+  proxy can't spend your own credits.
+- A `402` from `/v1/chat/completions` means that client's Kimchi account is out
+  of credits — the proxy forwards the upstream status unchanged.
 ```

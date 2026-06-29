@@ -23,7 +23,6 @@ function readEnv(): Env {
 	return {
 		KIMCHI_API_KEY: Deno.env.get("KIMCHI_API_KEY"),
 		KIMCHI_LLM_ENDPOINT: Deno.env.get("KIMCHI_LLM_ENDPOINT"),
-		KIMCHI_OPENAI_SERVICE_TOKEN: Deno.env.get("KIMCHI_OPENAI_SERVICE_TOKEN"),
 	}
 }
 

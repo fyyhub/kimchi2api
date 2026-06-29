@@ -15,7 +15,6 @@ function readEnv(): Env {
 	return {
 		KIMCHI_API_KEY: process.env.KIMCHI_API_KEY,
 		KIMCHI_LLM_ENDPOINT: process.env.KIMCHI_LLM_ENDPOINT,
-		KIMCHI_OPENAI_SERVICE_TOKEN: process.env.KIMCHI_OPENAI_SERVICE_TOKEN,
 	}
 }
 
