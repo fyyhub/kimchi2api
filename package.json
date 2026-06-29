@@ -1,0 +1,16 @@
+{
+	"name": "kimchi2api",
+	"version": "1.0.0",
+	"description": "OpenAI-compatible proxy for Kimchi models, deployable on Vercel Edge and Deno Deploy",
+	"type": "module",
+	"license": "Apache-2.0",
+	"scripts": {
+		"test": "vitest run",
+		"dev:vercel": "vercel dev",
+		"dev:deno": "deno run --allow-net --allow-env main.ts"
+	},
+	"devDependencies": {
+		"typescript": "^5.6.0",
+		"vitest": "^3.2.4"
+	}
+}
